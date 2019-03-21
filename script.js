@@ -3,26 +3,62 @@ ready(init);
 
 function ready(fn) {
     if (document.attachEvent ? document.readyState === "complete" : document.readyState !== "loading"){
-    //  fn();
+      fn();
     } else {
- //     document.addEventListener('DOMContentLoaded', fn);
+      document.addEventListener('DOMContentLoaded', fn);
     }
 }
 
+function init() {
+    fetch('https://telegramcontest.firebaseio.com/data.json').then(response => response.json().then(json => {
+        json.forEach((data, idx) => {
+            const w = new GraphWidget(data.columns,
+                data.colors,
+                data.names,
+                idx);
+            w.mount('#root');
+        });
+    }));    
+}
+
 class GraphWidget {
-    constructor(x, y, id) {        
+    constructor(data, colors, text, id) {        
         this.paddingX = 2;
-        this.dataX = x.slice(1); 
-        this.dataY = y.map(data => data.slice(1));
+        this.colors = Object.values(colors);
+        this.names = Object.values(text);
+        this.dataX = data[0].slice(1); 
+        this.dataY = data.slice(1).map(data => data.slice(1));
         this.namespace = 'tele_' + id;
+        this.minX = this.dataX[0];
+        this.maxX = this.dataX[this.dataX.length - 1];
+
+        const totalY = this.dataY.reduce((acc, cur) => { acc.push(...cur); return acc; }, []);
+        this.minY = Math.min(...totalY);
+        this.maxY = Math.max(...totalY);
+        this.selectedElement = null;
     }
 
     mount(el) {
-        const app = document.createElement('div');
-        app.appendChild(this.createUpperGraph());
-        app.appendChild(this.createLowerGraph());
-        app.appendChild(this.createButtons());
-        document.querySelector(el).appendChild(app);
+        this.app = document.createElement('div');
+        this.app.appendChild(this.createUpperGraph());
+        this.app.appendChild(this.createLowerGraph());
+        this.app.appendChild(this.createButtons());
+        document.querySelector(el).appendChild(this.app);
+        
+        this.brush = this.app.querySelector(this.byId('brush'));
+        this.innerBrush = this.app.querySelector('.inner-brush');
+        this.leftBrush = this.app.querySelector('.left-brush');
+        this.rightBrush = this.app.querySelector('.right-brush');
+
+        this.dataY.forEach((arr, idx) => {
+            const { p1, p2 } = this.createPath(arr, this.colors[idx], this.names[idx]);
+            this.app.querySelector(this.byId('lines')).appendChild(p1);
+            this.app.querySelector(this.byId('upperLines')).appendChild(p2);
+        });
+
+        this.transform();
+        this.addCallback();
+        this.addBrush(); 
     }
 
     createUpperGraph() {
@@ -55,10 +91,10 @@ class GraphWidget {
         
         g.appendChild(rect);
         svg.appendChild(g);
+        upper.appendChild(svg);
         header.appendChild(strong);
-        content.appendChild(upper);
-        content.appendChild(svg);
         content.appendChild(header);
+        content.appendChild(upper);
 
         return content;
     }
@@ -93,6 +129,7 @@ class GraphWidget {
         rect1.setAttributeNS(null, 'height', 98);
         rect1.setAttributeNS(null, 'opacity', 0.01);
         rect1.setAttributeNS(null, 'fill', 'white');
+        rect1.setAttributeNS(null, 'class', 'move inner-brush');
 
         const rect2 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         rect2.setAttributeNS(null, 'x', 48);
@@ -101,6 +138,7 @@ class GraphWidget {
         rect2.setAttributeNS(null, 'height', 98);
         rect2.setAttributeNS(null, 'opacity', 0.2);
         rect2.setAttributeNS(null, 'fill', 'black');
+        rect2.setAttributeNS(null, 'class', 'move left-brush');
 
         const rect3 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         rect3.setAttributeNS(null, 'x', 80);
@@ -109,8 +147,10 @@ class GraphWidget {
         rect3.setAttributeNS(null, 'height', 98);
         rect3.setAttributeNS(null, 'opacity', 0.2);
         rect3.setAttributeNS(null, 'fill', 'black');
+        rect3.setAttributeNS(null, 'class', 'move right-brush');
 
         g1.appendChild(g2);
+        g1.appendChild(path);
         g1.appendChild(rect1);
         g1.appendChild(rect2);
         g1.appendChild(rect3);
@@ -126,121 +166,25 @@ class GraphWidget {
 
         return group
     }
-}
 
-function init() { 
-    let selectedElement, offset, dataY, dataX, minX, maxX, minY, maxY;
-    const paddingX = 2;
-
-    const brush = document.querySelector('#brush');
-    const innerBrush = document.querySelector('.inner-brush');
-    const leftBrush = document.querySelector('.left-brush');
-    const rightBrush = document.querySelector('.right-brush');    
-
-    fetch('https://telegramcontest.firebaseio.com/data.json').then(response => response.json().then(data => {
-        const graphData = 4;
-        dataX = data[graphData].columns[0].slice(1);
-        dataY = data[graphData].columns.slice(1);
-        minX = dataX[0];
-        maxX = dataX[dataX.length - 1];
-        const totalY = dataY.reduce((acc, cur) => { acc.push(...cur.slice(1)); return acc; }, []);
-        minY = Math.min(...totalY);
-        maxY = Math.max(...totalY);
-        dataY.forEach((arrY, idx) => {
-                const { p1, p2 } = createPath(arrY.slice(1), data[graphData].colors['y' + idx], data[graphData].names['y' + idx]);
-                document.querySelector('#lines').appendChild(p1);
-                document.querySelector('#upperLines').appendChild(p2);
-            }
-        );
-
-        transform();
-        addCallback(data[graphData].names);
-        addBrush();   
-    }));
-
-    function startDrag(evt) {
-        if (evt.target.classList.contains('move')) {
-            selectedElement = evt.target;
-            offset = getMousePosition(evt);
-            offset.x -= +selectedElement.getAttributeNS(null, 'x');
-        }
-    }
-
-    function drag(evt) {
-        if (selectedElement) {
-            evt.preventDefault();
-            const coord = getMousePosition(evt);
-            const { min, max } = getLimit();
-            const current = coord.x - offset.x < min ? min : coord.x - offset.x > max ? max : coord.x - offset.x;
-            selectedElement.setAttributeNS(null, 'x', current);
-            
-            const xl = +leftBrush.getAttributeNS(null, 'x');
-            const xr = +rightBrush.getAttributeNS(null, 'x');        
-
-            if (selectedElement === innerBrush) {
-                const w = +innerBrush.getAttributeNS(null, 'width');
-                brush.setAttributeNS(null, 'd', `M0,0 h100 v100 h-100z M${current},1 h${w} v98 h-${w}z`);
-                leftBrush.setAttributeNS(null, 'x', current - paddingX);
-                rightBrush.setAttributeNS(null, 'x', current + w);
-            } else {
-                innerBrush.setAttributeNS(null, 'x', xl + paddingX);
-                innerBrush.setAttributeNS(null, 'width', xr - xl - paddingX);
-                brush.setAttributeNS(null, 'd', `M0,0 h100 v100 h-100z M${xl + paddingX},1 h${xr - xl - paddingX} v98 h-${xr - xl - paddingX}z`); 
-            }  
-            transform();                            
-        }
-    }
-
-    function endDrag() {
-        selectedElement = null;        
-        scaleUpper();
-    }
-
-    function getMousePosition(evt) {
-        const CTM = document.querySelector('#lowerChart').getScreenCTM();
-        if (evt.touches) { 
-            evt = evt.touches[0]; 
-        }
-
-        return {
-            x: (evt.clientX - CTM.e) / CTM.a,
-            y: (evt.clientY - CTM.f) / CTM.d
-        };
-    }
-
-    function getLimit() {
-        let min = 0;
-        let max = 100 - paddingX;
-        if (selectedElement === leftBrush) {
-            max = rightBrush.getAttributeNS(null, 'x') - 4 - paddingX;
-        } else if (selectedElement === rightBrush) {
-            min = +leftBrush.getAttributeNS(null, 'x') + 4 + paddingX;
-        } else {
-            min = paddingX;
-            max = max - innerBrush.getAttributeNS(null, 'width');
-        }
-
-        return { min, max };
-    }
-
-    function createPath(y, color, text) {
+    createPath(y, color, text) {
         const p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         const p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        redraw(p1, y, color, text);        
-        redraw(p2, y, color, text, maxY, minY, true);
-        addButton(color, text);
+        this.redraw(p1, y, color, text);        
+        this.redraw(p2, y, color, text, this.maxY, this.minY, true);
+        this.addButton(color, text);
         return { p1, p2 };
     }
 
-    function redraw(element, y, color, text, scaledMaxY = maxY, scaledMinY = minY, upper = false) {    
-        const x = dataX.map(value => getX(maxX, minX, value));
-        y = y.map(value => getY(scaledMaxY, scaledMinY, value));
+    redraw(element, y, color, text, scaledMaxY = this.maxY, scaledMinY = this.minY, upper = false) {    
+        const x = this.dataX.map(value => this.getX(this.maxX, this.minX, value));
+        y = y.map(value => this.getY(scaledMaxY, scaledMinY, value));
         let d = `M${x[0]}, ${y[0]}`;
         for(let i = 1; i < x.length; i++) {
             d += `L${x[i]}, ${y[i]}`;        
         }
 
-        if (!element.getAttributeNS(null, 'id')) {
+        if (!element.getAttributeNS(null, 'd')) {
             let add = '';
             let strokeWidth = 1.2;
             if (upper) {
@@ -249,53 +193,27 @@ function init() {
             }
 
             element.setAttributeNS(null, 'd', d);
-            element.setAttributeNS(null, 'id', 'y' + add + + text.slice(1));
+            element.setAttributeNS(null, 'data-idx', text.slice(1));
             element.setAttributeNS(null, 'stroke', color);
             element.setAttributeNS(null, 'stroke-width', strokeWidth);
             element.setAttributeNS(null, 'fill', 'none');
             element.setAttributeNS(null, 'vector-effect', 'non-scaling-stroke');
         } else {        
-            animateLine(element, d);
+            this.animateLine(element, d);
         }
     }
 
-    function animateLine(element, d) {
-        const animate = element.querySelector('animate') || document.createElementNS('http://www.w3.org/2000/svg', 'animate');
-        let prev = animate.getAttributeNS(null, 'to');
-        if (!prev) {
-            prev = element.getAttributeNS(null, 'd');
-            animate.setAttributeNS(null, 'attributeName', 'd');
-            animate.setAttributeNS(null, 'dur', '0.2s');
-            animate.setAttributeNS(null, 'repeatCount', '1');
-            animate.setAttributeNS(null, 'fill', 'freeze');
-            element.appendChild(animate);
-        }
-        
-        animate.setAttributeNS(null, 'from', prev);
-        animate.setAttributeNS(null, 'to', d);
-        animate.beginElement();
-    }
-
-    function transform() {
-        const l = +leftBrush.getAttributeNS(null, 'x') + paddingX / 2;
-        const r = +rightBrush.getAttributeNS(null, 'x') +  paddingX / 2;
-        const scale = 100/(r - l);
-        const g = document.querySelector('#upperLines');
-        g.setAttributeNS(null, 'transform', `scale(${scale} 1) translate(${-l} 0)`);
-        
-    }
-
-    function getY(max, min, current) {
+    getY(max, min, current) {
         return 100 - 1 - (current - min) / (max - min) * (100 - 2);
     }
 
-    function getX(max, min, current) {
+    getX(max, min, current) {
         return (current - min) / (max - min) * 98 + 1;
     }
 
-    function addButton(color, text) {
+    addButton(color, text) {
         const button = document.createElement('button');
-        button.setAttribute('id', 'b' + text.slice(1));
+        button.setAttribute('data-idx', text.slice(1));
         button.classList.add('btn');
         
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -319,83 +237,178 @@ function init() {
         svg.appendChild(use);
         button.appendChild(svg);
         button.appendChild(document.createTextNode(text));
-        document.querySelector('.btn-group').appendChild(button);
+        this.app.querySelector('.btn-group').appendChild(button);
     }
 
-    function addCallback() {
-        document.querySelectorAll('.btn').forEach(btn => btn.addEventListener('click', function () {
+    transform() {
+        const l = +this.leftBrush.getAttributeNS(null, 'x') + this.paddingX / 2;
+        const r = +this.rightBrush.getAttributeNS(null, 'x') +  this.paddingX / 2;
+        const scale = 100/(r - l);
+        const g = this.app.querySelector(this.byId('upperLines'));
+        g.setAttributeNS(null, 'transform', `scale(${scale} 1) translate(${-l} 0)`);        
+    }
+
+    byId(id) {
+        return '#' + this.namespace + id;
+    }
+
+    addCallback() {
+        const self = this;
+        this.app.querySelectorAll('.btn').forEach(btn => btn.addEventListener('click', function () {
             const off = this.classList.toggle('off');
-            const id = this.getAttribute('id').slice(1);
-            const lines = document.querySelectorAll('#y' + id + ', #yu' + id);
+            const id = this.getAttribute('data-idx');
+            const lines = self.app.querySelectorAll('path[data-idx="'+ id +'"]');
             if (off) {
                 lines.forEach(line => line.setAttribute('style', 'display:none;'));
             } else {
                 lines.forEach(line => line.setAttribute('style', ''));
             }
             
-            scaleLower();
-            scaleUpper();
-            toggleButton(this, off);           
+            self.scaleLower.call(self);
+            self.scaleUpper.call(self);
+            self.toggleButton(this, off);           
         }));
     }
 
-    function toggleButton(element, off) {
-        const a = element.querySelector('animate');
-        const color = element.querySelector('use').getAttribute('fill');
-        a.setAttribute('from', off ? color : 'white');
-        a.setAttribute('to', off ? 'white' : color);
-        a.beginElement();        
+    addBrush() {
+        this.app.querySelectorAll('.move').forEach(rect => {
+            rect.addEventListener('mousedown', this.startDrag.bind(this));
+            rect.addEventListener('mousemove', this.drag.bind(this));
+            rect.addEventListener('mouseup', this.endDrag.bind(this));
+            rect.addEventListener('mouseleave', this.endDrag.bind(this));            
+            rect.addEventListener('touchstart', this.startDrag.bind(this));
+            rect.addEventListener('touchmove', this.drag.bind(this));
+            rect.addEventListener('touchend', this.endDrag.bind(this));
+            rect.addEventListener('touchleave', this.endDrag.bind(this));
+            rect.addEventListener('touchcancel', this.endDrag.bind(this));
+        });
     }
 
-    function scaleLower() {
-        const nodes = document.querySelector('#lines').querySelectorAll('path:not([style*="display:none"])');
-        const totalY = []
-        for(let i = 0; i < nodes.length; i++) {
-            const idx = +nodes[i].getAttributeNS(null,'id').slice(1);
-            totalY.push(...dataY[idx].slice(1));
+    startDrag(evt) {
+        if (evt.target.classList.contains('move')) {
+            this.selectedElement = evt.target;
+            this.offset = this.getMousePosition(evt);
+            this.offset.x -= +this.selectedElement.getAttributeNS(null, 'x');
+        }
+    }
+
+    drag(evt) {
+        if (this.selectedElement) {
+            evt.preventDefault();
+            const coord = this.getMousePosition(evt);
+            const { min, max } = this.getLimit();
+            const current = coord.x - this.offset.x < min ? min : coord.x - this.offset.x > max ? max : coord.x - this.offset.x;
+            this.selectedElement.setAttributeNS(null, 'x', current);
+            
+            const xl = +this.leftBrush.getAttributeNS(null, 'x');
+            const xr = +this.rightBrush.getAttributeNS(null, 'x');        
+
+            if (this.selectedElement === this.innerBrush) {
+                const w = +this.innerBrush.getAttributeNS(null, 'width');
+                this.brush.setAttributeNS(null, 'd', `M0,0 h100 v100 h-100z M${current},1 h${w} v98 h-${w}z`);
+                this.leftBrush.setAttributeNS(null, 'x', current - this.paddingX);
+                this.rightBrush.setAttributeNS(null, 'x', current + w);
+            } else {
+                this.innerBrush.setAttributeNS(null, 'x', xl + this.paddingX);
+                this.innerBrush.setAttributeNS(null, 'width', xr - xl - this.paddingX);
+                this.brush.setAttributeNS(null, 'd', `M0,0 h100 v100 h-100z M${xl + this.paddingX},1 h${xr - xl - this.paddingX} v98 h-${xr - xl - this.paddingX}z`); 
+            }  
+            this.transform();                            
+        }
+    }
+
+    endDrag() {
+        this.selectedElement = null;  
+        this.scaleUpper();
+    }
+
+    getMousePosition(evt) {
+        const CTM = this.app.querySelector(this.byId('lowerChart')).getScreenCTM();
+        if (evt.touches) { 
+            evt = evt.touches[0]; 
         }
 
-        minY = Math.min(...totalY);
-        maxY = Math.max(...totalY);        
-        for(let i = 0; i < nodes.length; i++) {
-            const idx = +nodes[i].getAttributeNS(null,'id').slice(1);
-            redraw(nodes[i], dataY[idx].slice(1), null, null);
-        } 
+        return {
+            x: (evt.clientX - CTM.e) / CTM.a,
+            y: (evt.clientY - CTM.f) / CTM.d
+        };
     }
 
-    function scaleUpper() {
-        const upperNodes = document.querySelector('#upperLines').querySelectorAll('path:not([style*="display:none"])');
+    scaleUpper() {
+        const upperNodes = this.app.querySelector(this.byId('upperLines')).querySelectorAll('path:not([style*="display:none"])');
         const totalScaledY = [];
-        const l = +leftBrush.getAttributeNS(null, 'x') + paddingX / 2;
-        const r = +rightBrush.getAttributeNS(null, 'x') + paddingX / 2;
-        const x = dataX.map(value => getX(maxX, minX, value));
+        const l = +this.leftBrush.getAttributeNS(null, 'x') + this.paddingX / 2;
+        const r = +this.rightBrush.getAttributeNS(null, 'x') + this.paddingX / 2;
+        const x = this.dataX.map(value => this.getX(this.maxX, this.minX, value));
         const startIndex = x.findIndex(val => val > l);
         const endIndex = x.findIndex(val => val > r) === -1 ? x.length - 1: x.findIndex(val => val > r);
 
         for(let i = 0; i < upperNodes.length; i++) {
-            const idx = +upperNodes[i].getAttributeNS(null,'id').slice(2);
-            totalScaledY.push(...dataY[idx].slice(1).slice(startIndex, endIndex));
+            const idx = +upperNodes[i].getAttributeNS(null,'data-idx');
+            totalScaledY.push(...this.dataY[idx].slice(startIndex, endIndex));
         }            
         
         const scaledMaxY = Math.max(...totalScaledY);
         const scaledMinY = Math.min(...totalScaledY);
         for(let i = 0; i < upperNodes.length; i++) {
-            const idx = +upperNodes[i].getAttributeNS(null,'id').slice(2);
-            redraw(upperNodes[i], dataY[idx].slice(1), null, null, scaledMaxY, scaledMinY, true);  
+            const idx = +upperNodes[i].getAttributeNS(null,'data-idx');
+            this.redraw(upperNodes[i], this.dataY[idx], null, null, scaledMaxY, scaledMinY, true);  
         } 
     }
 
-    function addBrush() {
-        document.querySelectorAll('.move').forEach(rect => {
-            rect.addEventListener('mousedown', startDrag);
-            rect.addEventListener('mousemove', drag);
-            rect.addEventListener('mouseup', endDrag);
-            rect.addEventListener('mouseleave', endDrag);            
-            rect.addEventListener('touchstart', startDrag);
-            rect.addEventListener('touchmove', drag);
-            rect.addEventListener('touchend', endDrag);
-            rect.addEventListener('touchleave', endDrag);
-            rect.addEventListener('touchcancel', endDrag);
-        });
+    getLimit() {
+        let min = 0;
+        let max = 100 - this.paddingX;
+        if (this.selectedElement === this.leftBrush) {
+            max = this.rightBrush.getAttributeNS(null, 'x') - 4 - this.paddingX;
+        } else if (this.selectedElement === this.rightBrush) {
+            min = +this.leftBrush.getAttributeNS(null, 'x') + 4 + this.paddingX;
+        } else {
+            min = this.paddingX;
+            max = max - this.innerBrush.getAttributeNS(null, 'width');
+        }
+
+        return { min, max };
+    }
+
+    animateLine(element, d) {
+        const animate = element.querySelector('animate') || document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+        let prev = animate.getAttributeNS(null, 'to');
+        if (!prev) {
+            prev = element.getAttributeNS(null, 'd');
+            animate.setAttributeNS(null, 'attributeName', 'd');
+            animate.setAttributeNS(null, 'dur', '0.2s');
+            animate.setAttributeNS(null, 'repeatCount', '1');
+            animate.setAttributeNS(null, 'fill', 'freeze');
+            element.appendChild(animate);
+        }
+        
+        animate.setAttributeNS(null, 'from', prev);
+        animate.setAttributeNS(null, 'to', d);
+        animate.beginElement();
+    }
+
+    scaleLower() {
+        const nodes = this.app.querySelector(this.byId('lines')).querySelectorAll('path:not([style*="display:none"])');
+        const totalY = []
+        for(let i = 0; i < nodes.length; i++) {
+            const idx = +nodes[i].getAttributeNS(null, 'data-idx');
+            totalY.push(...this.dataY[idx]);
+        }
+
+        this.minY = Math.min(...totalY);
+        this.maxY = Math.max(...totalY);        
+        for(let i = 0; i < nodes.length; i++) {
+            const idx = +nodes[i].getAttributeNS(null, 'data-idx');
+            this.redraw(nodes[i], this.dataY[idx]);
+        } 
+    }
+
+    toggleButton(element, off) {
+        const a = element.querySelector('animate');
+        const color = element.querySelector('use').getAttribute('fill');
+        a.setAttribute('from', off ? color : 'white');
+        a.setAttribute('to', off ? 'white' : color);
+        a.beginElement();        
     }
 }
