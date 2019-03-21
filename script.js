@@ -56,6 +56,7 @@ class GraphWidget {
             this.app.querySelector(this.byId('upperLines')).appendChild(p2);
         });
 
+        this.drawAxis();
         this.transform();
         this.addCallback();
         this.addBrush(); 
@@ -196,6 +197,7 @@ class GraphWidget {
             element.setAttributeNS(null, 'data-idx', text.slice(1));
             element.setAttributeNS(null, 'stroke', color);
             element.setAttributeNS(null, 'stroke-width', strokeWidth);
+            element.setAttributeNS(null, 'opacity', 0.9);
             element.setAttributeNS(null, 'fill', 'none');
             element.setAttributeNS(null, 'vector-effect', 'non-scaling-stroke');
         } else {        
@@ -219,12 +221,7 @@ class GraphWidget {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttributeNS(null, 'viewBox', '0 0 20 20');
         svg.setAttributeNS(null, 'class', 'circle');
-        
-        const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-        use.setAttributeNS(null, 'href', '#circle');
-        use.setAttributeNS(null, 'fill', color);
-        use.setAttributeNS(null, 'stroke', color);
-        
+
         const animate = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
         animate.setAttributeNS(null, 'attributeName', 'fill');
         animate.setAttributeNS(null, 'from', color);
@@ -233,8 +230,28 @@ class GraphWidget {
         animate.setAttributeNS(null, 'repeatCount', '1');
         animate.setAttributeNS(null, 'fill', 'freeze');
 
-        use.appendChild(animate);
-        svg.appendChild(use);
+        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttributeNS(null, 'cx', 10);
+        c.setAttributeNS(null, 'cy', 10);
+        c.setAttributeNS(null, 'r', 9);
+        c.setAttributeNS(null, 'stroke-width', 2); 
+        c.setAttributeNS(null, 'fill', color);
+        c.setAttributeNS(null, 'stroke', color);
+
+        const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        p.setAttributeNS(null, 'd', "M5 10 L9 14 L15 6");
+        p.setAttributeNS(null, 'fill', 'none');
+        p.setAttributeNS(null, 'stroke-linejoin', 'round');
+        p.setAttributeNS(null, 'stroke-width', 2);   
+        p.setAttributeNS(null, 'stroke', 'white');   
+        p.setAttributeNS(null, 'stroke-linecap', 'round');
+        
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.appendChild(c);
+        g.appendChild(p);                    
+        c.appendChild(animate);
+        
+        svg.appendChild(g);
         button.appendChild(svg);
         button.appendChild(document.createTextNode(text));
         this.app.querySelector('.btn-group').appendChild(button);
@@ -335,7 +352,7 @@ class GraphWidget {
     }
 
     scaleUpper() {
-        const upperNodes = this.app.querySelector(this.byId('upperLines')).querySelectorAll('path:not([style*="display:none"])');
+        const upperNodes = this.app.querySelector(this.byId('upperLines')).querySelectorAll('path[data-idx]:not([style*="display:none"])');
         const totalScaledY = [];
         const l = +this.leftBrush.getAttributeNS(null, 'x') + this.paddingX / 2;
         const r = +this.rightBrush.getAttributeNS(null, 'x') + this.paddingX / 2;
@@ -353,7 +370,8 @@ class GraphWidget {
         for(let i = 0; i < upperNodes.length; i++) {
             const idx = +upperNodes[i].getAttributeNS(null,'data-idx');
             this.redraw(upperNodes[i], this.dataY[idx], null, null, scaledMaxY, scaledMinY, true);  
-        } 
+        }
+        this.drawAxis(scaledMaxY, scaledMinY); 
     }
 
     getLimit() {
@@ -406,9 +424,54 @@ class GraphWidget {
 
     toggleButton(element, off) {
         const a = element.querySelector('animate');
-        const color = element.querySelector('use').getAttribute('fill');
+        const color = element.querySelector('circle').getAttribute('fill');
         a.setAttribute('from', off ? color : 'white');
         a.setAttribute('to', off ? 'white' : color);
-        a.beginElement();        
+        a.beginElement();      
+    }
+
+    drawAxis(max = this.maxY, min = this.minY) {
+        const delta = max - min;
+        const step = Math.floor(delta / 6);
+        const g = this.app.querySelector(this.byId('upperLines'));
+        const lines = g.querySelectorAll('path[data-axis]');
+
+        if (!lines.length) {
+            for(let i = 0; i < 5; i++) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                const y = (i + 1) * step / delta * 100;
+                line.setAttributeNS(null, 'd', `M0 ${(i + 1) / 6 * 100} h 100`);
+                line.setAttributeNS(null, 'vector-effect', 'non-scaling-stroke');
+                line.setAttributeNS(null, 'opacity', 0.1);
+                line.setAttributeNS(null, 'fill', 'none');
+                line.setAttributeNS(null, 'stroke', 'black');
+                line.setAttributeNS(null, 'data-axis', true);           
+                
+                g.appendChild(line);
+                this.setXText(y, step, i , min);                
+            }
+        } else {
+            for(let i = 0; i < lines.length; i++) {          
+                const y = (i + 1) * step / delta * 100;
+                this.setXText(y, step, i, min);
+            }
+        }        
+    }
+    
+    setXText(y, step, idx, min) {
+        let node = this.app.querySelector(`div[data-idx="${idx}"]`);
+
+        if (!node) {
+            node = document.createElement('div');
+            node.style.position = 'absolute';
+            node.style.bottom = y - 0.5 + '%';        
+            node.setAttribute('data-idx', idx);
+            this.app.querySelector('.green').appendChild(node);
+        }
+        node.textContent =  step * (idx+1) + Math.floor(min);
+    }
+
+    setYText() {
+        
     }
 }
