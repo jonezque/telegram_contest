@@ -1,0 +1,60 @@
+/* You can add global styles to this file, and also import other style files */
+* {
+  box-sizing: border-box;  
+  outline: none;
+  font-family: "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell",
+   "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+}
+
+.content {
+  text-align: center;
+}
+
+button {  
+  background: transparent;
+}
+
+.green {
+  border: 1px solid green;
+}
+
+.upper {
+  height: 300px;
+}
+
+.lower {
+  height: 70px;
+  margin: 30px 0;
+}
+
+.btn-group {
+  display: flex;
+  text-align: start;
+  margin-bottom: 40px;
+}
+
+.btn {
+  display: inline-flex;
+  border: 1px solid grey;
+  padding: 4px 12px 4px 4px;
+  margin-right: 10px;
+  border-radius: 20px;
+  height: 40px;
+  align-items: center;
+}
+
+.circle {
+  width: 30px;
+  height: 30px;
+  margin-right: 5px;
+}
+
+.switch {
+  color: navy;
+  border: none;
+  margin: 0 auto;
+}
+
+.move {
+  cursor: move;
+}
