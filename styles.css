@@ -42,11 +42,14 @@ button {
   height: 30px;
   margin-right: 5px;
 }
-.switch {
-  color: navy;
-  border: none;
-  margin: 0 auto;
-}
 .move {
   cursor: move;
+}
+.label {
+  position: absolute;
+  font-size: 12px;
+  color: darkslategray;
+}
+ellipse:hover {
+  opacity: 1;
 }

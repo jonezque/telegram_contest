@@ -59,7 +59,8 @@ class GraphWidget {
         this.drawAxis();
         this.transform();
         this.addCallback();
-        this.addBrush(); 
+        this.addBrush();
+        this.scaleUpper(); 
     }
 
     createUpperGraph() {
@@ -116,35 +117,36 @@ class GraphWidget {
         const g2 = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         g2.setAttributeNS(null, 'id', this.namespace + 'lines');
         
+        const brushWidth = 2;
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.setAttributeNS(null, 'id', this.namespace + 'brush');
         path.setAttributeNS(null, 'fill-rule', 'evenodd');
         path.setAttributeNS(null, 'fill', 'grey');
         path.setAttributeNS(null, 'opacity', 0.2);
-        path.setAttributeNS(null, 'd', 'M0,0 h100 v100 h-100z M50,1 h30 v98 h-30z');
+        path.setAttributeNS(null, 'd', `M0,0 h100 v100 h-100z M${brushWidth},1 h${100 - 2 * brushWidth} v98 h-${100 - 2 * brushWidth}z`);
 
         const rect1 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect1.setAttributeNS(null, 'x', 50);
+        rect1.setAttributeNS(null, 'x', 2);
         rect1.setAttributeNS(null, 'y', 1);
-        rect1.setAttributeNS(null, 'width', 30);
+        rect1.setAttributeNS(null, 'width', 100 - 2 * brushWidth);
         rect1.setAttributeNS(null, 'height', 98);
         rect1.setAttributeNS(null, 'opacity', 0.01);
         rect1.setAttributeNS(null, 'fill', 'white');
         rect1.setAttributeNS(null, 'class', 'move inner-brush');
 
         const rect2 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect2.setAttributeNS(null, 'x', 48);
+        rect2.setAttributeNS(null, 'x', 0);
         rect2.setAttributeNS(null, 'y', 1);
-        rect2.setAttributeNS(null, 'width', 2);
+        rect2.setAttributeNS(null, 'width', brushWidth);
         rect2.setAttributeNS(null, 'height', 98);
         rect2.setAttributeNS(null, 'opacity', 0.2);
         rect2.setAttributeNS(null, 'fill', 'black');
         rect2.setAttributeNS(null, 'class', 'move left-brush');
 
         const rect3 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect3.setAttributeNS(null, 'x', 80);
+        rect3.setAttributeNS(null, 'x', 100 - brushWidth);
         rect3.setAttributeNS(null, 'y', 1);
-        rect3.setAttributeNS(null, 'width', 2);
+        rect3.setAttributeNS(null, 'width', brushWidth);
         rect3.setAttributeNS(null, 'height', 98);
         rect3.setAttributeNS(null, 'opacity', 0.2);
         rect3.setAttributeNS(null, 'fill', 'black');
@@ -174,6 +176,7 @@ class GraphWidget {
         this.redraw(p1, y, color, text);        
         this.redraw(p2, y, color, text, this.maxY, this.minY, true);
         this.addButton(color, text);
+
         return { p1, p2 };
     }
 
@@ -184,15 +187,9 @@ class GraphWidget {
         for(let i = 1; i < x.length; i++) {
             d += `L${x[i]}, ${y[i]}`;        
         }
-
+        
+        const strokeWidth = upper ? 3 : 1.2;
         if (!element.getAttributeNS(null, 'd')) {
-            let add = '';
-            let strokeWidth = 1.2;
-            if (upper) {
-                add = 'u';
-                strokeWidth = 3;
-            }
-
             element.setAttributeNS(null, 'd', d);
             element.setAttributeNS(null, 'data-idx', text.slice(1));
             element.setAttributeNS(null, 'stroke', color);
@@ -202,6 +199,10 @@ class GraphWidget {
             element.setAttributeNS(null, 'vector-effect', 'non-scaling-stroke');
         } else {        
             this.animateLine(element, d);
+        }
+
+        if (upper) {
+            this.drawPoints(x, y, element.getAttributeNS(null, 'stroke'));
         }
     }
 
@@ -262,7 +263,13 @@ class GraphWidget {
         const r = +this.rightBrush.getAttributeNS(null, 'x') +  this.paddingX / 2;
         const scale = 100/(r - l);
         const g = this.app.querySelector(this.byId('upperLines'));
-        g.setAttributeNS(null, 'transform', `scale(${scale} 1) translate(${-l} 0)`);        
+        g.setAttributeNS(null, 'transform', `scale(${scale} 1) translate(${-l} 0)`);
+                
+        const scales = +this.innerBrush.getAttributeNS(null, 'width') + 4;
+        const points = this.app.querySelectorAll(`ellipse`);
+        for(let i = 0; i < points.length; i++) {
+            points[i].setAttributeNS(null, 'rx', 1 * scales / 100);
+        }   
     }
 
     byId(id) {
@@ -330,13 +337,15 @@ class GraphWidget {
                 this.innerBrush.setAttributeNS(null, 'width', xr - xl - this.paddingX);
                 this.brush.setAttributeNS(null, 'd', `M0,0 h100 v100 h-100z M${xl + this.paddingX},1 h${xr - xl - this.paddingX} v98 h-${xr - xl - this.paddingX}z`); 
             }  
-            this.transform();                            
+            this.transform();
         }
     }
 
     endDrag() {
-        this.selectedElement = null;  
-        this.scaleUpper();
+        if(this.selectedElement) {
+            this.selectedElement = null;
+            this.scaleUpper();
+        }
     }
 
     getMousePosition(evt) {
@@ -371,7 +380,9 @@ class GraphWidget {
             const idx = +upperNodes[i].getAttributeNS(null,'data-idx');
             this.redraw(upperNodes[i], this.dataY[idx], null, null, scaledMaxY, scaledMinY, true);  
         }
-        this.drawAxis(scaledMaxY, scaledMinY); 
+         
+        this.drawAxis(scaledMaxY, scaledMinY);        
+        this.setYText(startIndex, endIndex); 
     }
 
     getLimit() {
@@ -437,9 +448,9 @@ class GraphWidget {
         const lines = g.querySelectorAll('path[data-axis]');
 
         if (!lines.length) {
-            for(let i = 0; i < 5; i++) {
+            for(let i = 0; i < 6; i++) {
                 const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                const y = (i + 1) * step / delta * 100;
+                const y = i * step / delta * 100;
                 line.setAttributeNS(null, 'd', `M0 ${(i + 1) / 6 * 100} h 100`);
                 line.setAttributeNS(null, 'vector-effect', 'non-scaling-stroke');
                 line.setAttributeNS(null, 'opacity', 0.1);
@@ -459,19 +470,71 @@ class GraphWidget {
     }
     
     setXText(y, step, idx, min) {
-        let node = this.app.querySelector(`div[data-idx="${idx}"]`);
+        let node = this.app.querySelector(`div[datax-idx="${idx}"]`);
 
         if (!node) {
             node = document.createElement('div');
-            node.style.position = 'absolute';
+            node.classList.add('label');
             node.style.bottom = y - 0.5 + '%';        
-            node.setAttribute('data-idx', idx);
+            node.setAttribute('datax-idx', idx);
             this.app.querySelector('.green').appendChild(node);
         }
         node.textContent =  step * (idx+1) + Math.floor(min);
     }
 
-    setYText() {
-        
+    setYText(from, to) {
+        const delta = to - from;
+        const step = delta / 6;
+        const labels = [];
+        for(let i = 0; i < 6; i++) {
+            labels.push(this.toDateFormat(this.dataX[from + Math.floor(i * step)]));
+        }
+
+        let nodes = this.app.querySelectorAll(`div[datay-idx]`);
+
+        if (!nodes.length) {
+            for(let i = 0; i < 6; i++) {
+                const node = document.createElement('div');
+                node.classList.add('label');
+                node.style.left = 100 / 6 * i + 2 + '%';
+                node.style.bottom = '-16px';             
+                node.setAttribute('datay-idx', 1);
+                node.textContent = labels[i];
+                this.app.querySelector('.green').appendChild(node);
+            }
+        } else {
+            for(let i = 0; i < 6; i++) {
+                nodes[i].textContent = labels[i];
+            }
+        } 
+    }
+
+    toDateFormat(date) {
+        const d = new Date(date);
+        const day = ('0' + d.getDate()).slice(-2);
+        const month = ('0' + (d.getMonth() + 1)).slice(-2);
+        const year = d.getFullYear().toString().slice(-2);
+        return `${day}/${month}/${year}`;
+    }
+
+    drawPoints(x, y, color) {
+        const points = this.app.querySelectorAll(`ellipse[fill="${color}"]`);
+        if(!points.length) {
+            for(let i = 0; i < x.length; i++) {
+                const c = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');                
+                c.setAttributeNS(null, 'cx', x[i]);
+                c.setAttributeNS(null, 'cy', y[i]);
+                c.setAttributeNS(null, 'rx', 1);
+                c.setAttributeNS(null, 'ry', 2);
+                c.setAttributeNS(null, 'fill', color);
+                c.setAttributeNS(null, 'opacity', 0);
+                c.setAttributeNS(null, 'vector-effect', 'non-scaling-stroke');                       
+                this.app.querySelector(this.byId('upperLines')).appendChild(c);
+            }    
+        } else {
+            for(let i = 0; i < points.length; i++) {
+                points[i].setAttributeNS(null, 'cy', y[i]);
+            }
+        }
     }
 }
