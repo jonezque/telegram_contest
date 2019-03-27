@@ -10,8 +10,8 @@ function ready(fn) {
 }
 
 function init() {
-    fetch('https://telegramcontest.firebaseio.com/data.json').then(response => response.json().then(json => {
-        json.forEach((data, idx) => {
+    fetch('chart_data.json').then(response => response.json().then(json => {
+        json.data.forEach((data, idx) => {
             const w = new GraphWidget(data.columns,
                 data.colors,
                 data.names,
@@ -200,10 +200,6 @@ class GraphWidget {
         } else {        
             this.animateLine(element, d);
         }
-
-        if (upper) {
-            this.drawPoints(x, y, element.getAttributeNS(null, 'stroke'));
-        }
     }
 
     getY(max, min, current) {
@@ -264,12 +260,6 @@ class GraphWidget {
         const scale = 100/(r - l);
         const g = this.app.querySelector(this.byId('upperLines'));
         g.setAttributeNS(null, 'transform', `scale(${scale} 1) translate(${-l} 0)`);
-                
-        const scales = +this.innerBrush.getAttributeNS(null, 'width') + 4;
-        const points = this.app.querySelectorAll(`ellipse`);
-        for(let i = 0; i < points.length; i++) {
-            points[i].setAttributeNS(null, 'rx', 1 * scales / 100);
-        }   
     }
 
     byId(id) {
@@ -515,26 +505,5 @@ class GraphWidget {
         const month = ('0' + (d.getMonth() + 1)).slice(-2);
         const year = d.getFullYear().toString().slice(-2);
         return `${day}/${month}/${year}`;
-    }
-
-    drawPoints(x, y, color) {
-        const points = this.app.querySelectorAll(`ellipse[fill="${color}"]`);
-        if(!points.length) {
-            for(let i = 0; i < x.length; i++) {
-                const c = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');                
-                c.setAttributeNS(null, 'cx', x[i]);
-                c.setAttributeNS(null, 'cy', y[i]);
-                c.setAttributeNS(null, 'rx', 1);
-                c.setAttributeNS(null, 'ry', 2);
-                c.setAttributeNS(null, 'fill', color);
-                c.setAttributeNS(null, 'opacity', 0);
-                c.setAttributeNS(null, 'vector-effect', 'non-scaling-stroke');                       
-                this.app.querySelector(this.byId('upperLines')).appendChild(c);
-            }    
-        } else {
-            for(let i = 0; i < points.length; i++) {
-                points[i].setAttributeNS(null, 'cy', y[i]);
-            }
-        }
     }
 }
